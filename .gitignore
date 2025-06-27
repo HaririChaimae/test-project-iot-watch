@@ -1,0 +1,16 @@
+# Fichiers Python à ignorer
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+
+# Environnements virtuels Python
+venv/
+.venv/
+
+# Fichiers VS Code
+.vscode/
+
+# Autres fichiers inutiles
+.DS_Store
+Thumbs.db
