@@ -1,8 +1,24 @@
 const fetchLatestTemperature = async () => {
   try {
+    // Essaye d'abord le backend local
+    try {
+      const response = await fetch('http://localhost:5000/api/latest');
+      console.log('Réponse brute /api/latest:', response);
+      if (response.ok) {
+        return await response.json();
+      } else {
+        const text = await response.text();
+        console.error('Réponse non-OK /api/latest:', text);
+      }
+    } catch (error) {
+      console.warn("Could not fetch from local API, falling back to remote API:", error);
+    }
+
+    // Fallback vers Open-Meteo si le backend local ne répond pas
     const response = await fetch(
       `${import.meta.env.VITE_API_URL}?latitude=30.4202&longitude=-9.5982&current_weather=true&timezone=auto`
     );
+    console.log('Réponse brute Open-Meteo:', response);
 
     if (!response.ok) {
       console.error("Error fetching latest temperature:", response.statusText);

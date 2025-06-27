@@ -12,6 +12,8 @@ from sklearn.preprocessing import MinMaxScaler
 from flask import Flask, jsonify, request, send_from_directory
 from services.weather_fetcher import *
 from models import *
+from temperature_db import save_temperature, read_all_temperatures
+from anomaly_detection import is_anomaly, detect_anomalies_with_details, get_anomaly_severity
 
 load_dotenv()
 app = Flask(__name__)
@@ -387,7 +389,7 @@ def predict_for_day(day):
                 
                 try:
                     cursor.execute('''
-                    INSERT INTO temperature_predictions 
+                    INSERT OR REPLACE INTO temperature_predictions 
                     (prediction_date, target_date, hour, temperature, latitude, longitude)
                     VALUES (?, ?, ?, ?, ?, ?)
                     ''', (datetime.now().isoformat(), timestamp.isoformat(), hour, temperature, 
@@ -538,6 +540,80 @@ def get_forecast():
             "success": False,
             "error": str(e)
         })
+
+@app.route('/check-temp', methods=['POST'])
+def check_temperature():
+    """
+    Route pour vérifier une température et détecter les anomalies
+    """
+    try:
+        data = request.get_json()
+        if not data or 'temperature' not in data:
+            return jsonify({"error": "Le champ 'temperature' est requis dans le body JSON"}), 400
+
+        current_temp = float(data['temperature'])
+        threshold = float(data.get('threshold', 2.0))
+
+        saved_entry = save_temperature(current_temp)
+        history_temps = read_all_temperatures()
+        if history_temps and len(history_temps) > 1:
+            history_temps = history_temps[:-1]  # Retirer la dernière température ajoutée
+
+        # Vérifier l'anomalie pour la température actuelle
+        is_anom, z_score = is_anomaly(current_temp, threshold)
+        
+        # Convertir numpy.bool_ en bool Python natif
+        is_anom = bool(is_anom)
+        
+        # Calculer les statistiques
+        mean_temp = np.mean(history_temps) if history_temps else None
+        std_temp = np.std(history_temps) if history_temps else None
+        
+        severity = get_anomaly_severity(z_score)
+
+        response = {
+            "temperature": current_temp,
+            "anomaly": is_anom,
+            "z_score": round(z_score, 2),
+            "threshold": threshold,
+            "mean": round(mean_temp, 2) if mean_temp is not None else None,
+            "std": round(std_temp, 2) if std_temp is not None else None,
+            "severity": severity,
+            "history_count": len(history_temps),
+            "reason": f"Z-score: {z_score:.2f}" if is_anom else "Normal",
+            "timestamp": saved_entry['timestamp']
+        }
+        return jsonify(response)
+
+    except ValueError as e:
+        return jsonify({"error": f"Erreur de conversion de données: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Erreur serveur: {str(e)}"}), 500
+
+@app.route('/api/predict-anomaly', methods=['GET'])
+def predict_anomaly_tomorrow():
+    """
+    Prédit s'il y aura une anomalie de température demain.
+    """
+    try:
+        # Utilise la fonction de prédiction existante pour demain (day=1)
+        result = predict_for_day(1)
+        predicted_temps = result.get("predictions", [])
+        history_temps = read_all_temperatures()
+        anomalies = []
+        for temp in predicted_temps:
+            is_anom, z_score = is_anomaly(temp, threshold=2.0)
+            # Convertir numpy.bool_ en bool Python natif
+            is_anom = bool(is_anom)
+            anomalies.append({"temperature": temp, "is_anomaly": is_anom, "z_score": z_score})
+        any_anomaly = any(a["is_anomaly"] for a in anomalies)
+        return jsonify({
+            "any_anomaly": any_anomaly,
+            "anomalies": anomalies,
+            "message": "Anomalie prévue demain !" if any_anomaly else "Pas d'anomalie prévue demain."
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.after_request
 def add_header(response):

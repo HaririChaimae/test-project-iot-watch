@@ -1,5 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
+import TemperaturePieChart from "./TemperaturePieChart";
+import AnomalyAlert from "./AnomalyAlert";
 
 /* Icons */
 import { ArrowDownIcon, ArrowUpIcon, ThermometerIcon } from "lucide-react";
@@ -26,6 +28,13 @@ const TemperatureCrad = ({ time, temperature, trend }) => {
           </span>
           <span className="text-2xl font-semibold ml-1">°C</span>
         </div>
+
+        {temperature !== null && (
+          <div className="mt-4">
+            <TemperaturePieChart temperature={temperature} unit="°C" />
+            <AnomalyAlert temperature={temperature} />
+          </div>
+        )}
 
         {trend !== "stable" && (
           <div className="flex items-center mt-2 text-sm font-medium">
